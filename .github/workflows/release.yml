@@ -18,9 +18,11 @@ jobs:
         include:
           - target: Android
             os: ubuntu-latest
-            build_cmd: flutter build apk --release
-            artifact_path: build/app/outputs/flutter-apk/app-release.apk
-            artifact_name: toolsapp-android.apk
+            build_cmd: flutter build apk --release --split-per-abi && flutter build appbundle --release
+            artifact_path: |
+              build/app/outputs/flutter-apk/*.apk
+              build/app/outputs/bundle/release/*.aab
+            artifact_name: toolsapp-android-optimized
           - target: Windows
             os: windows-latest
             build_cmd: flutter build windows --release
@@ -69,7 +71,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            toolsapp-android.apk/app-release.apk
+            toolsapp-android-optimized/*
             toolsapp-windows/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
