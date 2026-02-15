@@ -11,3 +11,6 @@
 
 # FFmpeg Kit ProGuard rules
 -keep class com.arthenica.ffmpegkit.** { *; }
+
+# Google Play Core ProGuard rules (fixes R8 missing classes error)
+-dontwarn com.google.android.play.core.**
