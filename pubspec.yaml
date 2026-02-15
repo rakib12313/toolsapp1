@@ -55,6 +55,7 @@ dependencies:
   # Storage & Persistence
   shared_preferences: ^2.2.2
   sqflite: ^2.3.0
+  sqflite_common_ffi: ^2.3.0+1
   
   # HTTP & Updates
   http: ^1.1.2

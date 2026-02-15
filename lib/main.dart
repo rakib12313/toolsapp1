@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
+import 'dart:io';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'app.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/theme_provider.dart';
@@ -9,6 +12,12 @@ import 'package:provider/provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize sqflite for desktop platforms
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
   
   // Initialize providers
   final themeProvider = ThemeProvider();
