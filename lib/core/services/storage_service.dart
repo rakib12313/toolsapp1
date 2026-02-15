@@ -18,20 +18,61 @@ class StorageService {
       }
     }
     
-    // Default path
-    Directory baseDir;
+    // Default to Downloads folder
+    Directory downloadsDir;
+    
     if (Platform.isWindows) {
-      baseDir = await getApplicationDocumentsDirectory();
+      // Windows: %USERPROFILE%\Downloads
+      final userProfile = Platform.environment['USERPROFILE'];
+      if (userProfile != null) {
+        downloadsDir = Directory(p.join(userProfile, 'Downloads'));
+      } else {
+        downloadsDir = await getApplicationDocumentsDirectory();
+      }
+    } else if (Platform.isAndroid) {
+      // Android: /storage/emulated/0/Download
+      // This is the standard path for the public Downloads folder
+      const downloadPath = '/storage/emulated/0/Download';
+      downloadsDir = Directory(downloadPath);
+      
+      if (!await downloadsDir.exists()) {
+        final externalDir = await getExternalStorageDirectory();
+        if (externalDir != null) {
+          // Navigate to Download folder from external storage (fallback logic)
+          final parts = externalDir.path.split('/');
+          if (parts.length > 3) {
+            final fallbackPath = '/${parts[1]}/${parts[2]}/Download';
+            downloadsDir = Directory(fallbackPath);
+          }
+        }
+      }
+      
+      // Final fallback to app-specific docs if all else fails
+      if (!await downloadsDir.exists()) {
+        downloadsDir = await getApplicationDocumentsDirectory();
+      }
     } else {
-      baseDir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+      // iOS/macOS: ~/Downloads
+      final docDir = await getApplicationDocumentsDirectory();
+      downloadsDir = Directory(p.join(docDir.parent.path, 'Downloads'));
+      
+      // Fallback if Downloads doesn't exist
+      if (!await downloadsDir.exists()) {
+        downloadsDir = docDir;
+      }
     }
     
-    final toolsAppDir = Directory(p.join(baseDir.path, 'ToolsApp'));
-    if (!await toolsAppDir.exists()) {
-      await toolsAppDir.create(recursive: true);
+    // Ensure the directory exists
+    if (!await downloadsDir.exists()) {
+      try {
+        await downloadsDir.create(recursive: true);
+      } catch (e) {
+        // If we can't create Downloads, fallback to documents
+        downloadsDir = await getApplicationDocumentsDirectory();
+      }
     }
     
-    return toolsAppDir.path;
+    return downloadsDir.path;
   }
   
   /// Set a custom save path

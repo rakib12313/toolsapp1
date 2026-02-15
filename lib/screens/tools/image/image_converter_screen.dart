@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:image/image.dart' as img;
 import 'package:provider/provider.dart';
+import '../../../core/utils/batch_processor_utils.dart';
 import '../../../widgets/responsive/responsive_builder.dart';
 import '../../../providers/storage_provider.dart';
 import '../../../providers/history_provider.dart';
@@ -21,10 +22,11 @@ class ImageConverterScreen extends StatefulWidget {
 }
 
 class _ImageConverterScreenState extends State<ImageConverterScreen> {
-  File? _selectedImage;
-  Uint8List? _imageBytes;
-  Uint8List? _convertedImageBytes;
-  bool _isProcessing = false;
+  final List<File> _selectedImages = [];
+  final Map<String, Uint8List> _imageBytes = {};
+  final Map<String, Uint8List> _convertedImageBytes = {};
+  final Map<String, bool> _processingStatus = {};
+  bool _isBatchProcessing = false;
   
   String _outputFormat = 'jpg';
   int _quality = 90;
@@ -33,7 +35,7 @@ class _ImageConverterScreenState extends State<ImageConverterScreen> {
     {'value': 'jpg', 'label': 'JPG', 'icon': '🖼️'},
     {'value': 'png', 'label': 'PNG', 'icon': '🎨'},
     {'value': 'webp', 'label': 'WebP', 'icon': '🌐'},
-    {'Value': 'bmp', 'label': 'BMP', 'icon': '🎞️'},
+    {'value': 'bmp', 'label': 'BMP', 'icon': '🎞️'},
   ];
   
   @override
@@ -44,22 +46,20 @@ class _ImageConverterScreenState extends State<ImageConverterScreen> {
       appBar: AppBar(
         title: const Text('Image Converter'),
         actions: [
-          if (_convertedImageBytes != null)
+          if (_convertedImageBytes.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.share),
-              onPressed: _shareImage,
+              onPressed: _shareAllImages,
             ),
         ],
       ),
       body: ListView(
         padding: EdgeInsets.all(horizontalPadding),
         children: [
-          if (_selectedImage == null)
+          if (_selectedImages.isEmpty)
             _buildFilePickerCard()
-          else
-            _buildImagePreviewCard(),
-          
-          if (_selectedImage != null) ...[
+          else ...[
+            _buildImageList(),
             const SizedBox(height: 16),
             _buildFormatCard(),
             
@@ -70,11 +70,7 @@ class _ImageConverterScreenState extends State<ImageConverterScreen> {
             
             const SizedBox(height: 16),
             _buildActionButtons(),
-          ],
-          
-          if (_convertedImageBytes != null) ...[
             const SizedBox(height: 24),
-            _buildResultCard(),
           ],
         ],
       ),
@@ -94,21 +90,21 @@ class _ImageConverterScreenState extends State<ImageConverterScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Select an Image',
+              'Select Images',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
             Text(
-              'Choose an image to convert',
+              'Choose images to convert (Batch support)',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: _pickImage,
+              onPressed: _pickImages,
               icon: const Icon(Icons.folder_open),
-              label: const Text('Pick Image'),
+              label: const Text('Pick Images'),
             ),
           ],
         ),
@@ -116,7 +112,7 @@ class _ImageConverterScreenState extends State<ImageConverterScreen> {
     );
   }
   
-  Widget _buildImagePreviewCard() {
+  Widget _buildImageList() {
     return Card.outlined(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -127,26 +123,86 @@ class _ImageConverterScreenState extends State<ImageConverterScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Selected Image',
+                  'Selected Images (${_selectedImages.length})',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 TextButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.change_circle),
-                  label: const Text('Change'),
+                  onPressed: _pickImages,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add'),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            if (_imageBytes != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(
-                  _imageBytes!,
-                  fit: BoxFit.contain,
-                  height: 200,
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _selectedImages.length,
+              separatorBuilder: (context, index) => const Divider(),
+              itemBuilder: (context, index) {
+                final file = _selectedImages[index];
+                final path = file.path;
+                final isProcessing = _processingStatus[path] ?? false;
+                final isDone = _convertedImageBytes.containsKey(path);
+                
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: _imageBytes.containsKey(path)
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.memory(
+                            _imageBytes[path]!,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : const Icon(Icons.image, size: 48),
+                  title: Text(
+                    path.split(Platform.pathSeparator).last,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    isDone
+                        ? 'Converted'
+                        : (isProcessing ? 'Converting...' : 'Pending'),
+                    style: TextStyle(
+                      color: isDone
+                          ? Colors.green
+                          : (isProcessing ? Colors.orange : null),
+                      fontWeight: isDone || isProcessing ? FontWeight.bold : null,
+                    ),
+                  ),
+                  trailing: isDone
+                      ? IconButton(
+                          icon: const Icon(Icons.check_circle, color: Colors.green),
+                          onPressed: () {
+                             // Maybe show preview or share individual?
+                          },
+                        )
+                      : (isProcessing
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () => _removeImage(index),
+                            )),
+                );
+              },
+            ),
+             if (_selectedImages.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  'Showing all images',
+                  style: Theme.of(context).textTheme.bodySmall,
+                  textAlign: TextAlign.center,
                 ),
               ),
           ],
@@ -239,183 +295,176 @@ class _ImageConverterScreenState extends State<ImageConverterScreen> {
   }
   
   Widget _buildActionButtons() {
+    final allDone = _selectedImages.isNotEmpty && 
+                    _convertedImageBytes.length == _selectedImages.length;
+                    
     return Row(
       children: [
         Expanded(
           child: FilledButton.icon(
-            onPressed: _isProcessing ? null : _convertImage,
-            icon: _isProcessing
+            onPressed: _isBatchProcessing ? null : _convertAllImages,
+            icon: _isBatchProcessing
                 ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.transform),
-            label: Text(_isProcessing ? 'Converting...' : 'Convert Image'),
+            label: Text(_isBatchProcessing 
+                ? 'Converting...' 
+                : (allDone ? 'Convert Again' : 'Convert All')),
           ),
         ),
-        if (_convertedImageBytes != null) ...[
+        if (_convertedImageBytes.isNotEmpty) ...[
           const SizedBox(width: 12),
           FilledButton.tonalIcon(
-            onPressed: _saveImage,
-            icon: const Icon(Icons.save),
-            label: const Text('Save'),
+            onPressed: _saveAllImages,
+            icon: const Icon(Icons.save_alt),
+            label: Text('Save All (${_convertedImageBytes.length})'),
           ),
         ],
       ],
     );
   }
   
-  Widget _buildResultCard() {
-    return Card.filled(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.check_circle,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Conversion Complete!',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Format: ${_outputFormat.toUpperCase()}',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Size: ${_formatFileSize(_convertedImageBytes!.length)}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  String _formatFileSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
-  }
-  
-  Future<void> _pickImage() async {
+  Future<void> _pickImages() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
+      allowMultiple: true,
     );
     
-    if (result != null && result.files.single.path != null) {
-      final file = File(result.files.single.path!);
-      final bytes = await file.readAsBytes();
-      
-      setState(() {
-        _selectedImage = file;
-        _imageBytes = bytes;
-        _convertedImageBytes = null;
-      });
+    if (result != null) {
+      for (var file in result.files) {
+        if (file.path != null) {
+          final f = File(file.path!);
+          if (!_selectedImages.any((element) => element.path == f.path)) {
+            _selectedImages.add(f);
+            // Load bytes for preview
+            f.readAsBytes().then((bytes) {
+              if (mounted) {
+                setState(() {
+                  _imageBytes[f.path] = bytes;
+                });
+              }
+            });
+          }
+        }
+      }
+      setState(() {});
     }
   }
   
-  Future<void> _convertImage() async {
-    if (_imageBytes == null) return;
+  void _removeImage(int index) {
+    setState(() {
+      final file = _selectedImages[index];
+      _imageBytes.remove(file.path);
+      _convertedImageBytes.remove(file.path);
+      _processingStatus.remove(file.path);
+      _selectedImages.removeAt(index);
+    });
+  }
+  
+  Future<void> _convertAllImages() async {
+    if (_selectedImages.isEmpty) return;
     
     setState(() {
-      _isProcessing = true;
+      _isBatchProcessing = true;
+      _convertedImageBytes.clear();
     });
     
     try {
-      final result = await compute(_convertImageInIsolate, {
-        'bytes': _imageBytes!,
-        'format': _outputFormat,
-        'quality': _quality,
-      });
-      
-      setState(() {
-        _convertedImageBytes = result;
-        _isProcessing = false;
-      });
+      for (var file in _selectedImages) {
+        setState(() {
+          _processingStatus[file.path] = true;
+        });
+        
+        final bytes = _imageBytes[file.path] ?? await file.readAsBytes();
+        
+        // Ensure bytes are loaded
+        if (!_imageBytes.containsKey(file.path)) {
+            _imageBytes[file.path] = bytes;
+        }
+        
+        final result = await compute(_convertImageInIsolate, {
+          'bytes': bytes,
+          'format': _outputFormat,
+          'quality': _quality,
+        });
+        
+        if (mounted) {
+          setState(() {
+            _convertedImageBytes[file.path] = result;
+            _processingStatus[file.path] = false;
+          });
+        }
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Image converted successfully!')),
+          SnackBar(content: Text('Converted ${_selectedImages.length} images successfully!')),
         );
       }
     } catch (e) {
-      setState(() {
-        _isProcessing = false;
-      });
-      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBatchProcessing = false;
+        });
+      }
     }
   }
   
   static Uint8List _convertImageInIsolate(Map<String, dynamic> params) {
-    final bytes = params['bytes'] as Uint8List;
-    final format = params['format'] as String;
-    final quality = params['quality'] as int;
-    
-    final image = img.decodeImage(bytes);
-    if (image == null) throw Exception('Failed to decode image');
-    
-    switch (format) {
-      case 'jpg':
-        return Uint8List.fromList(img.encodeJpg(image, quality: quality));
-      case 'png':
-        return Uint8List.fromList(img.encodePng(image));
-      case 'webp':
-        return Uint8List.fromList(img.encodeJpg(image, quality: quality)); // WebP not yet supported, using JPG
-      case 'bmp':
-        return Uint8List.fromList(img.encodeBmp(image));
-      default:
-        return Uint8List.fromList(img.encodeJpg(image, quality: quality));
-    }
+    return BatchProcessorUtils.convertImage(
+      params['bytes'] as Uint8List,
+      params['format'] as String,
+      params['quality'] as int,
+    );
   }
   
-  Future<void> _saveImage() async {
-    if (_convertedImageBytes == null) return;
+  Future<void> _saveAllImages() async {
+    if (_convertedImageBytes.isEmpty) return;
     
     try {
       final storageProvider = Provider.of<StorageProvider>(context, listen: false);
       final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
-      
       final directoryPath = storageProvider.savePath;
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileName = 'converted_$timestamp.$_outputFormat';
-      final filePath = '$directoryPath/$fileName';
       
-      final file = File(filePath);
-      await file.writeAsBytes(_convertedImageBytes!);
+      int successCount = 0;
       
-      // Save to history
-      await historyProvider.addEntry(HistoryItem(
-        toolName: 'Image Converter',
-        toolId: 'image_converter',
-        fileName: fileName,
-        fileSize: _convertedImageBytes!.length,
-        outputPath: filePath,
-        status: 'success',
-      ));
+      for (var entry in _convertedImageBytes.entries) {
+        final originalPath = entry.key;
+        final bytes = entry.value;
+        
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final originalName = originalPath.split(Platform.pathSeparator).last.split('.').first;
+        final fileName = '${originalName}_converted_$timestamp.$_outputFormat';
+        final filePath = '$directoryPath/$fileName';
+        
+        final file = File(filePath);
+        await file.writeAsBytes(bytes);
+        
+        // Save to history
+        await historyProvider.addEntry(HistoryItem(
+          toolName: 'Image Converter',
+          toolId: 'image_converter',
+          fileName: fileName,
+          fileSize: bytes.length,
+          outputPath: filePath,
+          status: 'success',
+        ));
+        
+        successCount++;
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved to: $filePath')),
+          SnackBar(content: Text('Saved $successCount images to: $directoryPath')),
         );
       }
     } catch (e) {
@@ -427,18 +476,27 @@ class _ImageConverterScreenState extends State<ImageConverterScreen> {
     }
   }
   
-  Future<void> _shareImage() async {
-    if (_convertedImageBytes == null) return;
+  Future<void> _shareAllImages() async {
+    if (_convertedImageBytes.isEmpty) return;
     
     try {
       final directory = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final filePath = '${directory.path}/converted_$timestamp.$_outputFormat';
+      final List<XFile> xFiles = [];
       
-      final file = File(filePath);
-      await file.writeAsBytes(_convertedImageBytes!);
+      for (var entry in _convertedImageBytes.entries) {
+        final originalPath = entry.key;
+        final bytes = entry.value;
+        
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final originalName = originalPath.split(Platform.pathSeparator).last.split('.').first;
+        final filePath = '${directory.path}/${originalName}_converted_$timestamp.$_outputFormat';
+        
+        final file = File(filePath);
+        await file.writeAsBytes(bytes);
+        xFiles.add(XFile(filePath));
+      }
       
-      await Share.shareXFiles([XFile(filePath)], text: 'Converted image');
+      await Share.shareXFiles(xFiles, text: 'Converted images');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

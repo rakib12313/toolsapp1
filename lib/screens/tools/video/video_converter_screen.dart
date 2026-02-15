@@ -1,12 +1,18 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_video/statistics.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import '../../../widgets/responsive/responsive_builder.dart';
-import '../../../providers/history_provider.dart';
-import '../../../models/history_item.dart';
+import 'package:share_plus/share_plus.dart';
 
-/// Video Converter Tool Screen  
+import '../../../models/history_item.dart';
+import '../../../providers/history_provider.dart';
+import '../../../providers/storage_provider.dart';
+import '../../../widgets/responsive/responsive_builder.dart';
+
 class VideoConverterScreen extends StatefulWidget {
   const VideoConverterScreen({super.key});
 
@@ -17,19 +23,16 @@ class VideoConverterScreen extends StatefulWidget {
 class _VideoConverterScreenState extends State<VideoConverterScreen> {
   File? _selectedVideo;
   String _outputFormat = 'mp4';
-  final bool _isProcessing = false;
-  
-  final List<Map<String, String>> _formats = [
-    {'value': 'mp4', 'label': 'MP4', 'icon': '🎬'},
-    {'value': 'avi', 'label': 'AVI', 'icon': '📹'},
-    {'value': 'mov', 'label': 'MOV', 'icon': '🎥'},
-    {'value': 'mkv', 'label': 'MKV', 'icon': '🎞️'},
-  ];
-  
+  bool _isProcessing = false;
+  double _progress = 0;
+  String? _outputPath;
+
+  final List<String> _formats = ['mp4', 'avi', 'mkv', 'mov', 'webm'];
+
   @override
   Widget build(BuildContext context) {
     final horizontalPadding = Responsive.getHorizontalPadding(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Video Converter'),
@@ -39,21 +42,22 @@ class _VideoConverterScreenState extends State<VideoConverterScreen> {
         children: [
           if (_selectedVideo == null)
             _buildFilePickerCard()
-          else
+          else ...[
             _buildVideoPreviewCard(),
-          
-          if (_selectedVideo != null) ...[
             const SizedBox(height: 16),
-            _buildFormatCard(),
-            
-            const SizedBox(height: 16),
+            _buildFormatSelection(),
+            const SizedBox(height: 24),
             _buildActionButtons(),
+          ],
+          if (_outputPath != null) ...[
+            const SizedBox(height: 24),
+            _buildResultCard(),
           ],
         ],
       ),
     );
   }
-  
+
   Widget _buildFilePickerCard() {
     return Card.outlined(
       child: Padding(
@@ -61,22 +65,17 @@ class _VideoConverterScreenState extends State<VideoConverterScreen> {
         child: Column(
           children: [
             Icon(
-              Icons.video_file,
+              Icons.video_library,
               size: 64,
               color: Theme.of(context).colorScheme.primary,
             ),
             const SizedBox(height: 16),
-            Text(
-              'Convert Video Format',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Convert Video', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(
-              'Select a video file to convert',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
+            Text('Change video format easily',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    )),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _pickVideo,
@@ -88,76 +87,46 @@ class _VideoConverterScreenState extends State<VideoConverterScreen> {
       ),
     );
   }
-  
+
   Widget _buildVideoPreviewCard() {
     return Card.outlined(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(
-              Icons.video_library,
-              size: 48,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _selectedVideo!.path.split('/').last.split('\\').last,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    _formatFileSize(_selectedVideo!.lengthSync()),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            TextButton(
-              onPressed: _pickVideo,
-              child: const Text('Change'),
-            ),
-          ],
+      child: ListTile(
+        leading: const Icon(Icons.movie),
+        title: Text(_selectedVideo!.path.split(Platform.pathSeparator).last),
+        subtitle: Text(_formatFileSize(_selectedVideo!.lengthSync())),
+        trailing: TextButton(
+          onPressed: _pickVideo,
+          child: const Text('Change'),
         ),
       ),
     );
   }
-  
-  Widget _buildFormatCard() {
+
+  Widget _buildFormatSelection() {
     return Card.outlined(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Output Format',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text('Output Format',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    )),
             const SizedBox(height: 16),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: _formats.map((format) {
                 return ChoiceChip(
-                  label: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(format['icon']!),
-                      const SizedBox(width: 8),
-                      Text(format['label']!),
-                    ],
-                  ),
-                  selected: _outputFormat == format['value'],
+                  label: Text(format.toUpperCase()),
+                  selected: _outputFormat == format,
                   onSelected: (selected) {
                     if (selected) {
-                      setState(() => _outputFormat = format['value']!);
+                      setState(() {
+                        _outputFormat = format;
+                        _outputPath = null;
+                      });
                     }
                   },
                 );
@@ -168,75 +137,157 @@ class _VideoConverterScreenState extends State<VideoConverterScreen> {
       ),
     );
   }
-  
+
   Widget _buildActionButtons() {
-    return FilledButton.icon(
-      onPressed: _isProcessing ? null : _convertVideo,
-      icon: _isProcessing
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.transform),
-      label: Text(_isProcessing ? 'Converting...' : 'Convert Video'),
+    return Column(
+      children: [
+        if (_isProcessing) ...[
+          const LinearProgressIndicator(),
+          const SizedBox(height: 16),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _isProcessing ? null : _convertVideo,
+            icon: const Icon(Icons.transform),
+            label: Text(_isProcessing ? 'Converting...' : 'Convert Video'),
+          ),
+        ),
+      ],
     );
   }
-  
-  String _formatFileSize(int bytes) {
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+
+  Widget _buildResultCard() {
+    return Card.filled(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('Conversion Complete!',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _saveFile,
+                    icon: const Icon(Icons.save),
+                    label: const Text('Save'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _shareFile,
+                    icon: const Icon(Icons.share),
+                    label: const Text('Share'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
-  
+
   Future<void> _pickVideo() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.video,
-    );
-    
+    final result = await FilePicker.platform.pickFiles(type: FileType.video);
     if (result != null && result.files.single.path != null) {
       setState(() {
         _selectedVideo = File(result.files.single.path!);
+        _outputPath = null;
       });
     }
   }
-  
+
   Future<void> _convertVideo() async {
     if (_selectedVideo == null) return;
-    
-    final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
-    
-    // Simulate recording history for the demo
-    await historyProvider.addEntry(HistoryItem(
-      toolName: 'Video Converter',
-      toolId: 'video_converter',
-      fileName: _selectedVideo!.path.split('/').last.split('\\').last,
-      fileSize: _selectedVideo!.lengthSync(),
-      status: 'success',
-    ));
-    
-    if (!mounted) return;
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Feature Note'),
-        content: const Text(
-          'Video conversion requires FFmpeg which is not included in this basic implementation. '
-          'For full video conversion support, you would need to:\n\n'
-          '1. Add FFmpeg library\n'
-          '2. Use ffmpeg_kit_flutter package\n'
-          '3. Configure platform-specific settings\n\n'
-          'This is a demonstration UI showing how the feature would work.\n\n'
-          'History entry has been recorded for this operation.',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+
+    setState(() {
+      _isProcessing = true;
+      _outputPath = null;
+    });
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final fileName = _selectedVideo!.path.split(Platform.pathSeparator).last.split('.').first;
+      final outputFilePath = '${tempDir.path}/${fileName}_converted_${DateTime.now().millisecondsSinceEpoch}.$_outputFormat';
+
+      // FFmpeg command for conversion
+      final command = '-i "${_selectedVideo!.path}" "$outputFilePath"';
+
+      final session = await FFmpegKit.execute(command);
+      final returnCode = await session.getReturnCode();
+
+      if (ReturnCode.isSuccess(returnCode)) {
+        setState(() {
+          _outputPath = outputFilePath;
+          _isProcessing = false;
+        });
+      } else {
+        throw Exception('Conversion failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Theme.of(context).colorScheme.error),
+        );
+      }
+      setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _saveFile() async {
+    if (_outputPath == null) return;
+    try {
+      final storageProvider = Provider.of<StorageProvider>(context, listen: false);
+      final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+      
+      final saveDir = storageProvider.savePath;
+      final fileName = _outputPath!.split(Platform.pathSeparator).last;
+      final targetPath = '$saveDir/$fileName';
+      
+      final file = File(_outputPath!);
+      await file.copy(targetPath);
+      
+      await historyProvider.addEntry(HistoryItem(
+        toolName: 'Video Converter',
+        toolId: 'video_converter',
+        fileName: fileName,
+        fileSize: file.lengthSync(),
+        outputPath: targetPath,
+        status: 'success',
+      ));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved to: $targetPath')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareFile() async {
+    if (_outputPath == null) return;
+    await Share.shareXFiles([XFile(_outputPath!)], text: 'Converted Video');
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }

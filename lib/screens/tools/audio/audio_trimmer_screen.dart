@@ -1,13 +1,18 @@
 import 'dart:io';
-import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import '../../../widgets/responsive/responsive_builder.dart';
-import '../../../providers/history_provider.dart';
-import '../../../models/history_item.dart';
+import 'package:share_plus/share_plus.dart';
 
-/// Audio Trimmer Tool Screen
+import '../../../models/history_item.dart';
+import '../../../providers/history_provider.dart';
+import '../../../providers/storage_provider.dart';
+import '../../../widgets/responsive/responsive_builder.dart';
+
 class AudioTrimmerScreen extends StatefulWidget {
   const AudioTrimmerScreen({super.key});
 
@@ -17,14 +22,15 @@ class AudioTrimmerScreen extends StatefulWidget {
 
 class _AudioTrimmerScreenState extends State<AudioTrimmerScreen> {
   File? _selectedAudio;
-  double _startTime = 0;
-  double _endTime = 100;
-  double _totalDuration = 100; // In seconds
-  
+  double _duration = 100; // Total duration in seconds
+  RangeValues _trimRange = const RangeValues(0, 100);
+  bool _isProcessing = false;
+  String? _outputPath;
+
   @override
   Widget build(BuildContext context) {
     final horizontalPadding = Responsive.getHorizontalPadding(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Audio Trimmer'),
@@ -37,17 +43,19 @@ class _AudioTrimmerScreenState extends State<AudioTrimmerScreen> {
           else ...[
             _buildAudioPreviewCard(),
             const SizedBox(height: 16),
-            _buildWaveformCard(),
-            const SizedBox(height: 16),
-            _buildTrimControlsCard(),
-            const SizedBox(height: 16),
-            _buildActionButton(),
+            _buildTrimmerControls(),
+            const SizedBox(height: 24),
+            _buildActionButtons(),
+          ],
+          if (_outputPath != null) ...[
+            const SizedBox(height: 24),
+            _buildResultCard(),
           ],
         ],
       ),
     );
   }
-  
+
   Widget _buildFilePickerCard() {
     return Card.outlined(
       child: Padding(
@@ -55,23 +63,17 @@ class _AudioTrimmerScreenState extends State<AudioTrimmerScreen> {
         child: Column(
           children: [
             Icon(
-              Icons.music_note,
+              Icons.content_cut,
               size: 64,
               color: Theme.of(context).colorScheme.primary,
             ),
             const SizedBox(height: 16),
-            Text(
-              'Trim Audio',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Trim Audio', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(
-              'Trim audio files to desired length',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
+            Text('Cut specific parts of your audio file',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    )),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _pickAudio,
@@ -83,13 +85,13 @@ class _AudioTrimmerScreenState extends State<AudioTrimmerScreen> {
       ),
     );
   }
-  
+
   Widget _buildAudioPreviewCard() {
     return Card.outlined(
       child: ListTile(
         leading: const Icon(Icons.audiotrack),
-        title: Text(_selectedAudio!.path.split('/').last.split('\\').last),
-        subtitle: Text('Duration: ${_formatDuration(_totalDuration)}'),
+        title: Text(_selectedAudio!.path.split(Platform.pathSeparator).last),
+        subtitle: Text('Total Length: ${_formatDuration(_duration)}'),
         trailing: TextButton(
           onPressed: _pickAudio,
           child: const Text('Change'),
@@ -97,191 +99,217 @@ class _AudioTrimmerScreenState extends State<AudioTrimmerScreen> {
       ),
     );
   }
-  
-  Widget _buildWaveformCard() {
+
+  Widget _buildTrimmerControls() {
     return Card.outlined(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Audio Waveform', style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            )),
-            const SizedBox(height: 16),
-            Container(
-              height: 80,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.graphic_eq,
-                      size: 48,
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Waveform Preview',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildTrimControlsCard() {
-    return Card.outlined(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Trim Points', style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            )),
-            const SizedBox(height: 16),
-            
-            // Start time
-            Row(
-              children: [
-                Expanded(
-                  child: Text('Start: ${_formatDuration(_startTime)}', 
-                    style: Theme.of(context).textTheme.bodyMedium),
-                ),
-                Text('End: ${_formatDuration(_endTime)}',
-                  style: Theme.of(context).textTheme.bodyMedium),
-              ],
-            ),
-            const SizedBox(height: 8),
-            
-            // Range slider
-            RangeSlider(
-              values: RangeValues(_startTime, _endTime),
-              min: 0,
-              max: _totalDuration,
-              divisions: _totalDuration.toInt(),
-              labels: RangeLabels(
-                _formatDuration(_startTime),
-                _formatDuration(_endTime),
-              ),
-              onChanged: (values) {
-                setState(() {
-                  _startTime = values.start;
-                  _endTime = values.end;
-                });
-              },
-            ),
-            
-            const SizedBox(height: 8),
+            Text('Trim Settings',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    )),
+            const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('0:00', style: Theme.of(context).textTheme.bodySmall),
-                Text(_formatDuration(_totalDuration), 
-                  style: Theme.of(context).textTheme.bodySmall),
+                Text('Start: ${_formatDuration(_trimRange.start)}'),
+                Text('End: ${_formatDuration(_trimRange.end)}'),
               ],
             ),
-            
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 16,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Trimmed duration: ${_formatDuration(_endTime - _startTime)}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            RangeSlider(
+              values: _trimRange,
+              min: 0,
+              max: _duration,
+              onChanged: (values) {
+                setState(() {
+                  _trimRange = values;
+                });
+              },
+            ),
+            Text(
+              'Selected Duration: ${_formatDuration(_trimRange.end - _trimRange.start)}',
+              style: TextStyle(color: Theme.of(context).colorScheme.primary),
             ),
           ],
         ),
       ),
     );
   }
-  
-  Widget _buildActionButton() {
-    return FilledButton.icon(
-      onPressed: _showFeatureDialog,
-      icon: const Icon(Icons.cut),
-      label: const Text('Trim Audio'),
+
+  Widget _buildActionButtons() {
+    return Column(
+      children: [
+        if (_isProcessing) ...[
+          const LinearProgressIndicator(),
+          const SizedBox(height: 16),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _isProcessing ? null : _trimAudio,
+            icon: const Icon(Icons.content_cut),
+            label: Text(_isProcessing ? 'Trimming...' : 'Trim & Save'),
+          ),
+        ),
+      ],
     );
   }
-  
+
+  Widget _buildResultCard() {
+    return Card.filled(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('Trim Complete!',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _saveFile,
+                    icon: const Icon(Icons.save),
+                    label: const Text('Save'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _shareFile,
+                    icon: const Icon(Icons.share),
+                    label: const Text('Share'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickAudio() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.audio);
     if (result != null && result.files.single.path != null) {
+      final file = File(result.files.single.path!);
+      
+      // Use FFprobe to get duration
+      final session = await FFprobeKit.getMediaInformation(file.path);
+      final durationStr = session.getMediaInformation()?.getDuration();
+      final duration = double.tryParse(durationStr ?? '100') ?? 100;
+
       setState(() {
-        _selectedAudio = File(result.files.single.path!);
-        // Simulated duration - in real implementation, would use audio packages
-        _totalDuration = 180; // 3 minutes
-        _endTime = _totalDuration;
+        _selectedAudio = file;
+        _duration = duration;
+        _trimRange = RangeValues(0, duration);
+        _outputPath = null;
       });
     }
   }
-  
-  String _formatDuration(double seconds) {
-    final minutes = (seconds / 60).floor();
-    final secs = (seconds % 60).floor();
-    return '${minutes}:${secs.toString().padLeft(2, '0')}';
+
+  Future<void> _trimAudio() async {
+    if (_selectedAudio == null) return;
+
+    setState(() {
+      _isProcessing = true;
+      _outputPath = null;
+    });
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final extension = _selectedAudio!.path.split('.').last;
+      final fileName = _selectedAudio!.path.split(Platform.pathSeparator).last.split('.').first;
+      final outputFilePath = '${tempDir.path}/${fileName}_trimmed_${DateTime.now().millisecondsSinceEpoch}.$extension';
+
+      // FFmpeg command for trimming
+      // -ss start_time -to end_time -i input -c copy output
+      // Note: -c copy is fast but might not be precise with some formats.
+      // Re-encoding is safer for precision: -i input -ss start -to end output
+      final start = _trimRange.start.toStringAsFixed(3);
+      final end = _trimRange.end.toStringAsFixed(3);
+      
+      final command = '-i "${_selectedAudio!.path}" -ss $start -to $end -c copy "$outputFilePath"';
+
+      final session = await FFmpegKit.execute(command);
+      final returnCode = await session.getReturnCode();
+
+      if (ReturnCode.isSuccess(returnCode)) {
+        setState(() {
+          _outputPath = outputFilePath;
+          _isProcessing = false;
+        });
+      } else {
+        throw Exception('Trimming failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Theme.of(context).colorScheme.error),
+        );
+      }
+      setState(() => _isProcessing = false);
+    }
   }
-  
-  void _showFeatureDialog() async {
-    final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
-    
-    // Simulate recording history for the demo
-    await historyProvider.addEntry(HistoryItem(
-      toolName: 'Audio Trimmer',
-      toolId: 'audio_trimmer',
-      fileName: _selectedAudio!.path.split('/').last.split('\\').last,
-      fileSize: _selectedAudio!.lengthSync(),
-      status: 'success',
-    ));
-    
-    if (!mounted) return;
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Feature Note'),
-        content: const Text(
-          'Audio trimming requires audio processing libraries like just_audio or audioplayers for playback and FFmpeg for actual trimming. '
-          'This demo UI demonstrates the interface. Full implementation would include waveform visualization and precise audio editing.\n\n'
-          'History entry has been recorded for this operation.',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+
+  Future<void> _saveFile() async {
+    if (_outputPath == null) return;
+    try {
+      final storageProvider = Provider.of<StorageProvider>(context, listen: false);
+      final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+      
+      final saveDir = storageProvider.savePath;
+      final fileName = _outputPath!.split(Platform.pathSeparator).last;
+      final targetPath = '$saveDir/$fileName';
+      
+      final file = File(_outputPath!);
+      await file.copy(targetPath);
+      
+      await historyProvider.addEntry(HistoryItem(
+        toolName: 'Audio Trimmer',
+        toolId: 'audio_trimmer',
+        fileName: fileName,
+        fileSize: file.lengthSync(),
+        outputPath: targetPath,
+        status: 'success',
+      ));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved to: $targetPath')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareFile() async {
+    if (_outputPath == null) return;
+    await Share.shareXFiles([XFile(_outputPath!)], text: 'Trimmed Audio');
+  }
+
+  String _formatDuration(double seconds) {
+    final duration = Duration(milliseconds: (seconds * 1000).toInt());
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+    if (duration.inHours > 0) {
+      return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
+    }
+    return "$twoDigitMinutes:$twoDigitSeconds";
   }
 }

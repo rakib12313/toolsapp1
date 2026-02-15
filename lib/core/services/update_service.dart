@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -64,13 +65,22 @@ class UpdateService {
       final assets = releaseData['assets'] as List;
       if (assets.isEmpty) return null;
       
-      // Find Windows executable
-      final windowsAsset = assets.firstWhere(
-        (asset) => (asset['name'] as String).contains('.exe'),
+      String extension;
+      if (Platform.isAndroid) {
+        extension = '.apk';
+      } else if (Platform.isWindows) {
+        extension = '.exe';
+      } else {
+        return assets.first['browser_download_url'] as String;
+      }
+      
+      // Find matching asset
+      final matchingAsset = assets.firstWhere(
+        (asset) => (asset['name'] as String).toLowerCase().endsWith(extension),
         orElse: () => assets.first,
       );
       
-      return windowsAsset['browser_download_url'] as String;
+      return matchingAsset['browser_download_url'] as String;
     } catch (e) {
       return null;
     }

@@ -2,6 +2,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://dl.cloudsmith.io/public/arthenica/ffmpeg-kit/maven/") }
     }
 }
 

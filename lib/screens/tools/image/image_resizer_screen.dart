@@ -99,6 +99,13 @@ class _ImageResizerScreenState extends State<ImageResizerScreen> {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              'Supports JPG, PNG, WEBP (Max 50MB)',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+            ),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _pickImage,
@@ -374,6 +381,21 @@ class _ImageResizerScreenState extends State<ImageResizerScreen> {
     
     if (result != null && result.files.single.path != null) {
       final file = File(result.files.single.path!);
+      
+      // Check file size (max 50MB)
+      final size = await file.length();
+      if (size > 50 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('File is too large. Maximum size is 50MB.'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+        return;
+      }
+
       final bytes = await file.readAsBytes();
       
       // Decode image to get dimensions
@@ -399,6 +421,33 @@ class _ImageResizerScreenState extends State<ImageResizerScreen> {
     setState(() {
       _isProcessing = true;
     });
+
+    // Validate dimensions
+    if (_width > 10000 || _height > 10000) {
+      setState(() => _isProcessing = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Dimensions cannot exceed 10000x10000 pixels.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+      return;
+    }
+    
+    if (_width <= 0 || _height <= 0) {
+      setState(() => _isProcessing = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Dimensions must be greater than 0.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+      return;
+    }
     
     try {
       final result = await compute(_resizeImageInIsolate, {
