@@ -5,8 +5,8 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   
   // GitHub Repository (Update with your repo details)
-  static const String githubOwner = 'YOUR_USERNAME';
-  static const String githubRepo = 'toolsapp';
+  static const String githubOwner = 'rakib12313';
+  static const String githubRepo = 'toolsapp1';
   static const String githubApiUrl = 
       'https://api.github.com/repos/$githubOwner/$githubRepo/releases/latest';
   

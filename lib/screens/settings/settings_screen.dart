@@ -124,10 +124,18 @@ class SettingsScreen extends StatelessWidget {
     return Card.outlined(
       child: Column(
         children: [
-          ListTile(
-            leading: const Icon(Icons.system_update),
-            title: const Text('Version'),
-            subtitle: Text('${AppConstants.appName} v${AppConstants.appVersion}'),
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final version = snapshot.hasData 
+                  ? 'v${snapshot.data!.version}' 
+                  : 'v${AppConstants.appVersion}';
+              return ListTile(
+                leading: const Icon(Icons.system_update),
+                title: const Text('Version'),
+                subtitle: Text('${AppConstants.appName} $version'),
+              );
+            },
           ),
           const Divider(height: 1),
           ListTile(
@@ -201,16 +209,24 @@ class SettingsScreen extends StatelessWidget {
     );
   }
   
-  void _showAboutDialog(BuildContext context) {
+  Future<void> _showAboutDialog(BuildContext context) async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    
+    if (!context.mounted) return;
+    
     showAboutDialog(
       context: context,
       applicationName: AppConstants.appName,
-      applicationVersion: AppConstants.appVersion,
-      applicationIcon: const FlutterLogo(size: 64),
+      applicationVersion: 'v${packageInfo.version}',
+      applicationIcon: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset('assets/icon/app_icon.png', width: 64, height: 64, 
+          errorBuilder: (context, error, stackTrace) => const FlutterLogo(size: 64)),
+      ),
       children: [
         const Text('A comprehensive multi-tool utility application for image, PDF, and video processing.'),
         const SizedBox(height: 16),
-        const Text('Developed with ❤️ using Flutter'),
+        const Text('Developed with ❤️ using RAKIB'),
       ],
     );
   }
