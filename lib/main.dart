@@ -10,7 +10,10 @@ import 'package:provider/provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize storage and history providers
+  // Initialize providers
+  final themeProvider = ThemeProvider();
+  await themeProvider.initialize();
+  
   final storageProvider = StorageProvider();
   await storageProvider.initialize();
   

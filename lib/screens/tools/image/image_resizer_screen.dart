@@ -1,5 +1,10 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:image/image.dart' as img;
 import 'package:provider/provider.dart';
 import '../../../widgets/responsive/responsive_builder.dart';
 import '../../../providers/storage_provider.dart';

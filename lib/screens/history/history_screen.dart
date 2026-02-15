@@ -51,7 +51,7 @@ class HistoryScreen extends StatelessWidget {
     final dateStr = DateFormat('MMM dd, yyyy • hh:mm a').format(item.timestamp);
     
     return Card.outlined(
-      margin: const EdgeInsets.bottom(12),
+      margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
