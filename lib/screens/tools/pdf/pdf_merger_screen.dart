@@ -1,10 +1,12 @@
-import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
+import 'package:provider/provider.dart';
 import '../../../widgets/responsive/responsive_builder.dart';
+import '../../../providers/storage_provider.dart';
+import '../../../providers/history_provider.dart';
+import '../../../models/history_item.dart';
 
 /// PDF Merger Tool Screen
 class PdfMergerScreen extends StatefulWidget {
@@ -268,11 +270,25 @@ class _PdfMergerScreenState extends State<PdfMergerScreen> {
     if (_mergedPdf == null) return;
     
     try {
-      final directory = await getApplicationDocumentsDirectory();
+      final storageProvider = Provider.of<StorageProvider>(context, listen: false);
+      final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+      
+      final directoryPath = storageProvider.savePath;
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final filePath = '${directory.path}/merged_$timestamp.pdf';
+      final fileName = 'merged_$timestamp.pdf';
+      final filePath = '$directoryPath/$fileName';
       
       await _mergedPdf!.copy(filePath);
+      
+      // Save to history
+      await historyProvider.addEntry(HistoryItem(
+        toolName: 'PDF Merger',
+        toolId: 'pdf_merger',
+        fileName: fileName,
+        fileSize: _mergedPdf!.lengthSync(),
+        outputPath: filePath,
+        status: 'success',
+      ));
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/storage_provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/update_service.dart';
 import '../../widgets/responsive/responsive_builder.dart';
@@ -88,18 +89,20 @@ class SettingsScreen extends StatelessWidget {
   }
   
   Widget _buildStorageCard(BuildContext context) {
+    final storageProvider = Provider.of<StorageProvider>(context);
+    
     return Card.outlined(
       child: Column(
         children: [
           ListTile(
             leading: const Icon(Icons.folder_outlined),
             title: const Text('Storage Location'),
-            subtitle: const Text('Default save folder'),
+            subtitle: Text(storageProvider.savePath.isEmpty 
+              ? 'Default save folder' 
+              : storageProvider.savePath),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Storage settings - Coming soon!')),
-              );
+            onTap: () async {
+              await storageProvider.pickSavePath();
             },
           ),
           const Divider(height: 1),

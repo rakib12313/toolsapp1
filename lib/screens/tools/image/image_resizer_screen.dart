@@ -1,11 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:image/image.dart' as img;
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:provider/provider.dart';
 import '../../../widgets/responsive/responsive_builder.dart';
+import '../../../providers/storage_provider.dart';
+import '../../../providers/history_provider.dart';
+import '../../../models/history_item.dart';
 
 /// Image Resizer Tool Screen
 class ImageResizerScreen extends StatefulWidget {
@@ -455,12 +454,26 @@ class _ImageResizerScreenState extends State<ImageResizerScreen> {
     if (_processedImageBytes == null) return;
     
     try {
-      final directory = await getApplicationDocumentsDirectory();
+      final storageProvider = Provider.of<StorageProvider>(context, listen: false);
+      final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+      
+      final directoryPath = storageProvider.savePath;
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final filePath = '${directory.path}/resized_$timestamp.jpg';
+      final fileName = 'resized_$timestamp.jpg';
+      final filePath = '$directoryPath/$fileName';
       
       final file = File(filePath);
       await file.writeAsBytes(_processedImageBytes!);
+      
+      // Save to history
+      await historyProvider.addEntry(HistoryItem(
+        toolName: 'Image Resizer',
+        toolId: 'image_resizer',
+        fileName: fileName,
+        fileSize: _processedImageBytes!.length,
+        outputPath: filePath,
+        status: 'success',
+      ));
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

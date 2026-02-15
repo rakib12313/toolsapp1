@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'package:provider/provider.dart';
 import '../../../widgets/responsive/responsive_builder.dart';
+import '../../../providers/history_provider.dart';
+import '../../../models/history_item.dart';
 
 /// Video Converter Tool Screen  
 class VideoConverterScreen extends StatefulWidget {
@@ -201,6 +202,19 @@ class _VideoConverterScreenState extends State<VideoConverterScreen> {
   Future<void> _convertVideo() async {
     if (_selectedVideo == null) return;
     
+    final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+    
+    // Simulate recording history for the demo
+    await historyProvider.addEntry(HistoryItem(
+      toolName: 'Video Converter',
+      toolId: 'video_converter',
+      fileName: _selectedVideo!.path.split('/').last.split('\\').last,
+      fileSize: _selectedVideo!.lengthSync(),
+      status: 'success',
+    ));
+    
+    if (!mounted) return;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -211,7 +225,8 @@ class _VideoConverterScreenState extends State<VideoConverterScreen> {
           '1. Add FFmpeg library\n'
           '2. Use ffmpeg_kit_flutter package\n'
           '3. Configure platform-specific settings\n\n'
-          'This is a demonstration UI showing how the feature would work.',
+          'This is a demonstration UI showing how the feature would work.\n\n'
+          'History entry has been recorded for this operation.',
         ),
         actions: [
           FilledButton(

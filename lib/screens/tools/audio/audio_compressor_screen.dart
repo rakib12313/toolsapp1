@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'package:provider/provider.dart';
 import '../../../widgets/responsive/responsive_builder.dart';
+import '../../../providers/history_provider.dart';
+import '../../../models/history_item.dart';
 
 /// Audio Compressor Tool Screen
 class AudioCompressorScreen extends StatefulWidget {
@@ -274,14 +275,28 @@ class _AudioCompressorScreenState extends State<AudioCompressorScreen> {
     }
   }
   
-  void _showFeatureDialog() {
+  void _showFeatureDialog() async {
+    final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+    
+    // Simulate recording history for the demo
+    await historyProvider.addEntry(HistoryItem(
+      toolName: 'Audio Compressor',
+      toolId: 'audio_compressor',
+      fileName: _selectedAudio!.path.split('/').last.split('\\').last,
+      fileSize: _selectedAudio!.lengthSync(),
+      status: 'success',
+    ));
+    
+    if (!mounted) return;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Feature Note'),
         content: const Text(
           'Audio compression requires FFmpeg or similar audio processing libraries. '
-          'This demo UI demonstrates the interface. Full implementation would include codec-based compression algorithms.',
+          'This demo UI demonstrates the interface. Full implementation would include codec-based compression algorithms.\n\n'
+          'History entry has been recorded for this operation.',
         ),
         actions: [
           FilledButton(

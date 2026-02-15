@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'package:provider/provider.dart';
 import '../../../widgets/responsive/responsive_builder.dart';
+import '../../../providers/history_provider.dart';
+import '../../../models/history_item.dart';
 
 /// Audio Converter Tool Screen
 class AudioConverterScreen extends StatefulWidget {
@@ -197,14 +198,28 @@ class _AudioConverterScreenState extends State<AudioConverterScreen> {
     }
   }
   
-  void _showFeatureDialog() {
+  void _showFeatureDialog() async {
+    final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+    
+    // Simulate recording history for the demo
+    await historyProvider.addEntry(HistoryItem(
+      toolName: 'Audio Converter',
+      toolId: 'audio_converter',
+      fileName: _selectedAudio!.path.split('/').last.split('\\').last,
+      fileSize: _selectedAudio!.lengthSync(),
+      status: 'success',
+    ));
+    
+    if (!mounted) return;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Feature Note'),
         content: const Text(
           'Audio conversion requires FFmpeg for codec support. '
-          'This demo UI demonstrates the interface. Full implementation would use audio processing libraries like ffmpeg_kit_flutter or just_audio.',
+          'This demo UI demonstrates the interface. Full implementation would use audio processing libraries like ffmpeg_kit_flutter or just_audio.\n\n'
+          'History entry has been recorded for this operation.',
         ),
         actions: [
           FilledButton(

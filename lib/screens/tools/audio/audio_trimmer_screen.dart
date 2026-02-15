@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'package:provider/provider.dart';
 import '../../../widgets/responsive/responsive_builder.dart';
+import '../../../providers/history_provider.dart';
+import '../../../models/history_item.dart';
 
 /// Audio Trimmer Tool Screen
 class AudioTrimmerScreen extends StatefulWidget {
@@ -248,14 +249,28 @@ class _AudioTrimmerScreenState extends State<AudioTrimmerScreen> {
     return '${minutes}:${secs.toString().padLeft(2, '0')}';
   }
   
-  void _showFeatureDialog() {
+  void _showFeatureDialog() async {
+    final historyProvider = Provider.of<HistoryProvider>(context, listen: false);
+    
+    // Simulate recording history for the demo
+    await historyProvider.addEntry(HistoryItem(
+      toolName: 'Audio Trimmer',
+      toolId: 'audio_trimmer',
+      fileName: _selectedAudio!.path.split('/').last.split('\\').last,
+      fileSize: _selectedAudio!.lengthSync(),
+      status: 'success',
+    ));
+    
+    if (!mounted) return;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Feature Note'),
         content: const Text(
           'Audio trimming requires audio processing libraries like just_audio or audioplayers for playback and FFmpeg for actual trimming. '
-          'This demo UI demonstrates the interface. Full implementation would include waveform visualization and precise audio editing.',
+          'This demo UI demonstrates the interface. Full implementation would include waveform visualization and precise audio editing.\n\n'
+          'History entry has been recorded for this operation.',
         ),
         actions: [
           FilledButton(
